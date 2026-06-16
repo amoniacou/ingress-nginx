@@ -77,12 +77,8 @@ jobs:
         env:
           TAG: ${{ steps.upstream.outputs.tag }}
           REGISTRY: ghcr.io/amoniacou/ingress-nginx
+          IMAGE: controller
         run: |
           echo "Starting the build for upstream official release: $TAG..."
-          # Trigger the original Makefile build process with the correct base image
-          make BASE_IMAGE=$(cat NGINX_BASE) build image
-          
-          # Retag the locally generated image for the target GHCR repository and push it
-          docker tag ingress-controller/controller:$TAG ghcr.io/amoniacou/ingress-nginx/controller:$TAG
-          docker push ghcr.io/amoniacou/ingress-nginx/controller:$TAG
-          echo "Successfully pushed ghcr.io/amoniacou/ingress-nginx/controller:$TAG"
+          make REGISTRY=$REGISTRY TAG=$TAG BASE_IMAGE=$(cat NGINX_BASE) build image push
+          echo "Successfully pushed $REGISTRY/$IMAGE:$TAG"

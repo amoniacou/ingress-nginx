@@ -35,8 +35,7 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: read
+      contents: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
@@ -48,17 +47,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Octo-STS
-        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
-        id: octo-sts
-        with:
-          scope: chainguard-forks/ingress-nginx
-          identity: release
-
       - name: Check if any changes since last release
         id: check
         env:
-          GH_TOKEN: ${{ steps.octo-sts.outputs.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git fetch --tags
           TAG=$(git tag --points-at HEAD)
@@ -79,21 +71,21 @@ jobs:
 
               if [ -z "$RELEASE_WORTHY_CHANGES" ]; then
                 echo "No Go source files, go.mod, or go.sum changed since last release. Skipping release."
-                echo "need_release=no" >> $GITHUB_OUTPUT
+                echo "need_release=no" >> "$GITHUB_OUTPUT"
               else
                 echo "Found release-worthy changes since last release:"
                 echo "$RELEASE_WORTHY_CHANGES"
-                echo "need_release=yes" >> $GITHUB_OUTPUT
+                echo "need_release=yes" >> "$GITHUB_OUTPUT"
               fi
             else
               echo "No previous tags found. Creating first release."
-              echo "need_release=yes" >> $GITHUB_OUTPUT
+              echo "need_release=yes" >> "$GITHUB_OUTPUT"
             fi
           else
             RELEASE=$(gh release view "$TAG" --json tagName --jq '.tagName' || echo "none")
             if [ "$RELEASE" == "$TAG" ]; then
               echo "A release exists for tag $TAG, which has the latest changes, so no need for a new tag or release."
-              echo "need_release=no" >> $GITHUB_OUTPUT
+              echo "need_release=no" >> "$GITHUB_OUTPUT"
             else
               echo "Tag $TAG exists, but no release is associated. Need a new release."
               echo "need_release=yes" >> "$GITHUB_OUTPUT"
@@ -130,7 +122,7 @@ jobs:
       - name: Create GitHub release
         if: steps.check.outputs.need_release == 'yes'
         env:
-          GH_TOKEN: ${{ steps.octo-sts.outputs.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ steps.tag.outputs.tag }}" \
             --title "${{ steps.tag.outputs.tag }}" \

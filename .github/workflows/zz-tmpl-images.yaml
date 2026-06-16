@@ -68,7 +68,7 @@ jobs:
     name: Push
     needs: changestag
     if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'kubernetes/ingress-nginx' && needs.changestag.outputs.tag == 'true')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changestag.outputs.tag == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -84,13 +84,12 @@ jobs:
     - name: Checkout
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+    - name: Log in to the Container registry
+      uses: docker/login-action@v4
       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     - name: Push
       run: |
-          cd images/ && make REGISTRY=ingressnginx NAME=${{ inputs.name }} push
-
+          cd images/ && make REGISTRY=ghcr.io/amoniacou NAME=${{ inputs.name }} push

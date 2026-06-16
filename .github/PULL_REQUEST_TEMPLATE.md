@@ -1,36 +1,25 @@
 <!--- Provide a general summary of your changes in the Title above --->
-<!--- Please don't @-mention people in PR or commit messages (do so in an additional comment). --->
-<!--- Please make sure you title is descriptive, it is used in the Release notes to let others know what it does ---> 
 
-## What this PR does / why we need it:
-<!--- Why is this change required? What problem does it solve? -->
-<!--- If it fixes an open issue, please link to the issue here. -->
+## 📝 Description / Why we need it
+<!--- What is the purpose of this change? (e.g., Fixing sync workflow, updating actions, modifying GHCR paths) -->
 
-## Types of changes
-<!--- What types of changes does your code introduce? Put an `x` in all the boxes that apply: -->
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] CVE Report (Scanner found CVE and adding report)
-- [ ] Breaking change (fix or feature that would cause existing functionality to change)
-- [ ] Documentation only
 
-## Which issue/s this PR fixes
-<!--
-(optional, in `fixes #<issue number>` format, will close that issue when PR gets merged):
+## ⚙️ Type of change
+<!--- Put an `x` in the boxes that apply: -->
+- [ ] CI/CD infrastructure change (modifying workflows, scripts, or permissions)
+- [ ] Dependabot dependency update
+- [ ] Documentation or README update
+- [ ] Other (please specify)
 
-fixes #
--->
 
-## How Has This Been Tested?
-<!--- Please describe in detail how you tested your changes. -->
-<!--- Include details of your testing environment, and the tests you ran to -->
-<!--- see how your change affects other areas of the code, etc. -->
+## 🛠️ How has this been tested?
+<!--- Since we no longer run automated E2E test workflows, please describe how you verified this change -->
+- [ ] Tested manually via `workflow_dispatch` (manual trigger) on a test branch
+- [ ] Validated workflow syntax against GitHub schema
+- [ ] No testing required (e.g., typo fix, documentation)
 
-## Checklist:
-<!--- Go over all the following points, and put an `x` in all the boxes that apply. -->
-<!--- If you're unsure about any of these, don't hesitate to ask. We're here to help! -->
-- [ ] My change requires a change to the documentation.
-- [ ] I have updated the documentation accordingly.
-- [ ] I've read the [CONTRIBUTION](https://github.com/kubernetes/ingress-nginx/blob/main/CONTRIBUTING.md) guide
-- [ ] I have added unit and/or e2e tests to cover my changes.
-- [ ] All new and existing tests passed.
+
+## 📋 Checklist:
+<!--- Put an `x` in all the boxes that apply. -->
+- [ ] My changes follow the new automated sync flow (no upstream code modifications).
+- [ ] The workflow changes (if any) do not break the sync with `kubernetes/ingress-nginx`.

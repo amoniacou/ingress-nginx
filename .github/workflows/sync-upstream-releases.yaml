@@ -1,0 +1,88 @@
+name: Sync & Build Upstream Releases
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'  # Run every 3 hours
+  workflow_dispatch:       # Allows manual trigger from the GitHub Actions UI
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
+      # 1. Fetch the latest stable release tag from the official kubernetes/ingress-nginx repository
+      - name: Get latest upstream release
+        id: upstream
+        run: |
+          LATEST_TAG=$(curl -s https://api.github.com/repos/kubernetes/ingress-nginx/releases/latest | jq -r '.tag_name')
+          echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest release in upstream: $LATEST_TAG"
+
+      # 2. Check if the image for this specific tag already exists in the amoniacou GHCR registry
+      - name: Check if image exists in our GHCR
+        id: check_ghcr
+        run: |
+          # Try to docker pull the target image. If it doesn't exist, the command fails (exit code 1)
+          if docker pull ghcr.io/amoniacou/ingress-nginx/controller:${{ steps.upstream.outputs.tag }} 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Image for version ${{ steps.upstream.outputs.tag }} already exists in GHCR. Skipping build."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "New release detected! Image ${{ steps.upstream.outputs.tag }} is missing in GHCR. Proceeding with build."
+          fi
+
+      # 3. If the image is missing, clone the upstream repository at that specific release tag
+      - name: Checkout upstream tag
+        if: steps.check_ghcr.outputs.exists == 'false'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: 'kubernetes/ingress-nginx'
+          ref: ${{ steps.upstream.outputs.tag }}
+          fetch-depth: 0
+
+      # 4. Set up the build environment (Go, QEMU, Buildx, and registry authentication)
+      - name: Set up Go
+        if: steps.check_ghcr.outputs.exists == 'false'
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: 'GOLANG_VERSION'
+
+      - name: Set up QEMU
+        if: steps.check_ghcr.outputs.exists == 'false'
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Set up Docker Buildx
+        if: steps.check_ghcr.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GHCR
+        if: steps.check_ghcr.outputs.exists == 'false'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 5. Build the controller image using the project's native Makefile, then tag and push it to GHCR
+      - name: Build and Push Controller Image to amoniacou GHCR
+        if: steps.check_ghcr.outputs.exists == 'false'
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+          REGISTRY: ghcr.io/amoniacou/ingress-nginx
+        run: |
+          echo "Starting the build for upstream official release: $TAG..."
+          # Trigger the original Makefile build process with the correct base image
+          make BASE_IMAGE=$(cat NGINX_BASE) build image
+          
+          # Retag the locally generated image for the target GHCR repository and push it
+          docker tag ingress-controller/controller:$TAG ghcr.io/amoniacou/ingress-nginx/controller:$TAG
+          docker push ghcr.io/amoniacou/ingress-nginx/controller:$TAG
+          echo "Successfully pushed ghcr.io/amoniacou/ingress-nginx/controller:$TAG"

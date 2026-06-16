@@ -8,6 +8,7 @@ on:
 
 permissions:
   checks: write
+  contents: read
 
 jobs:
   report:
@@ -21,7 +22,7 @@ jobs:
       - uses: dorny/test-reporter@3d76b34a4535afbd0600d347b09a6ee5deb3ed7f # v2.6.0
         with:
           artifact: /e2e-test-reports-(.*)/
-          name: JEST Tests $1               # Name of the check run which will be created
+          name: E2E Tests $1               # Name of the check run which will be created
           path: 'report*.xml'               # Path to test results (inside artifact .zip)
-          reporter: jest-junit              # Format of test results
+          reporter: java-junit              # Format of test results. Done for Go/Helm XML reports.
           fail-on-empty: 'true'

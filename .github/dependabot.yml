@@ -1,5 +1,6 @@
 version: 2
 updates:
+  # --- Залишаємо тільки оновлення для екшнів у sync-upstream-releases.yaml ---
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -7,37 +8,8 @@ updates:
     labels:
       - "area/dependency"
       - "release-note-none"
-      - "ok-to-test"
     groups:
       actions:
         update-types:
           - "minor"
-          - "patch"
-  - package-ecosystem: "docker"
-    directories:
-      - "**/rootfs"
-    schedule:
-      interval: "weekly"
-    labels:
-      - "area/dependency"
-      - "release-note-none"
-      - "ok-to-test"
-    groups:
-      docker:
-        update-types:
-          - "minor"
-          - "patch"
-  - package-ecosystem: "gomod"
-    directories:
-      - "/"
-      - "**/rootfs"
-    schedule:
-      interval: "weekly"
-    labels:
-      - "area/dependency"
-      - "release-note-none"
-      - "ok-to-test"
-    groups:
-      go:
-        update-types:
           - "patch"

@@ -1,0 +1,72 @@
+name: TEST Build Upstream Releases
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: 
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
+      # 1. Fetch the latest tag from Chainguard fork
+      - name: Get latest upstream release
+        id: upstream
+        run: |
+          LATEST_TAG=$(curl -s https://api.github.com/repos/chainguard-forks/ingress-nginx/tags | jq -r '.[0].name')
+          echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest tag in Chainguard: $LATEST_TAG"
+
+      # 2. CLONE CHAINGUARD REPOSITORY
+      - name: Checkout upstream tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: 'chainguard-forks/ingress-nginx'
+          ref: ${{ steps.upstream.outputs.tag }}
+          fetch-depth: 0
+
+      # 3. Set up the build environment
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: 'GOLANG_VERSION'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 4. Build and push the image under a TEST tag
+      - name: Build and Push Controller Image to amoniacou GHCR
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+          REGISTRY: ghcr.io/amoniacou/ingress-nginx
+          IMAGE: controller
+        run: |
+          echo "Starting the TEST build for Chainguard release: $TAG..."
+          
+          # Temporarily add the suffix "-pr-test" to the tag so as not to overwrite the main production image,
+          # if it already exists, and to clearly see the test image in your GHCR.
+          TEST_TAG="${TAG}-pr-test"
+          
+          make REGISTRY=$REGISTRY TAG=$TEST_TAG BASE_IMAGE=$(cat NGINX_BASE) build image push
+          
+          echo "Successfully processed TEST release $REGISTRY/$IMAGE:$TEST_TAG"

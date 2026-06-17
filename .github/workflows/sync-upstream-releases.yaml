@@ -67,6 +67,8 @@ jobs:
           # if it already exists, and to clearly see the test image in your GHCR.
           TEST_TAG="${TAG}-pr-test"
           
-          make REGISTRY=$REGISTRY TAG=$TEST_TAG BASE_IMAGE=$(cat NGINX_BASE) build image push
+          CLEAN_BASE_IMAGE=$(cat NGINX_BASE | tr -d '\r\n')
+          
+          make REGISTRY=$REGISTRY TAG=$TEST_TAG BASE_IMAGE=$CLEAN_BASE_IMAGE build image push
           
           echo "Successfully processed TEST release $REGISTRY/$IMAGE:$TEST_TAG"

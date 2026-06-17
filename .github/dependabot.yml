@@ -1,6 +1,5 @@
 version: 2
 updates:
-  # --- Залишаємо тільки оновлення для екшнів у sync-upstream-releases.yaml ---
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

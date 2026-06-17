@@ -95,6 +95,9 @@ jobs:
           echo "Using BASE_IMAGE: $CLEAN_BASE_IMAGE"
           
           # 3. Run the build
-          make REGISTRY=$REGISTRY TAG=$TEST_TAG BASE_IMAGE=$CLEAN_BASE_IMAGE build image push
+          make REGISTRY=$REGISTRY TAG=$TEST_TAG BASE_IMAGE=$CLEAN_BASE_IMAGE build image
           
-          echo "Successfully processed TEST release $REGISTRY/$IMAGE:$TEST_TAG"
+          echo "Pushing image to GHCR: $FULL_IMAGE_NAME"
+          docker push $FULL_IMAGE_NAME
+          
+          echo "Successfully processed TEST release $FULL_IMAGE_NAME"

@@ -75,12 +75,16 @@ jobs:
         run: |
           echo "Starting the TEST build for Chainguard release: $TAG..."
           
-          # Temporarily add the suffix "-pr-test" to the tag so as not to overwrite the main production image,
-          # if it already exists, and to clearly see the test image in your GHCR.
           TEST_TAG="${TAG}-pr-test"
           
-          CLEAN_BASE_IMAGE=$(cat NGINX_BASE | tr -d '\r\n')
-
+          # 1. Remove the incorrect user:group in the Dockerfile if it exists
+          if [ -f rootfs/Dockerfile ]; then
+            sed -i 's/www-data.www-data/www-data:www-data/g' rootfs/Dockerfile
+          elif [ -f Dockerfile ]; then
+            sed -i 's/www-data.www-data/www-data:www-data/g' Dockerfile
+          fi
+          
+          # 2. Check if NGINX_BASE file exists and read its content, otherwise use a fallback image
           if [ -f NGINX_BASE ]; then
             CLEAN_BASE_IMAGE=$(cat NGINX_BASE | tr -d '\r\n')
           else
@@ -90,6 +94,7 @@ jobs:
           
           echo "Using BASE_IMAGE: $CLEAN_BASE_IMAGE"
           
+          # 3. Run the build
           make REGISTRY=$REGISTRY TAG=$TEST_TAG BASE_IMAGE=$CLEAN_BASE_IMAGE build image push
           
           echo "Successfully processed TEST release $REGISTRY/$IMAGE:$TEST_TAG"

@@ -68,6 +68,15 @@ jobs:
           TEST_TAG="${TAG}-pr-test"
           
           CLEAN_BASE_IMAGE=$(cat NGINX_BASE | tr -d '\r\n')
+
+          if [ -f NGINX_BASE ]; then
+            CLEAN_BASE_IMAGE=$(cat NGINX_BASE | tr -d '\r\n')
+          else
+            echo "NGINX_BASE not found in this tag, using fallback image."
+            CLEAN_BASE_IMAGE="registry.k8s.io/ingress-nginx/nginx:v2.2.8"
+          fi
+          
+          echo "Using BASE_IMAGE: $CLEAN_BASE_IMAGE"
           
           make REGISTRY=$REGISTRY TAG=$TEST_TAG BASE_IMAGE=$CLEAN_BASE_IMAGE build image push
           

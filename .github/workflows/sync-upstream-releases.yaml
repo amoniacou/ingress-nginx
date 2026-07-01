@@ -31,26 +31,29 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MANUAL_VERSION: ${{ github.event.inputs.version }}
         run: |
-          # Check if a manual version is provided
           if [ -n "$MANUAL_VERSION" ]; then
             echo "Using manually specified version: $MANUAL_VERSION"
             echo "tag=$MANUAL_VERSION" >> "$GITHUB_OUTPUT"
           else
             echo "No version specified, fetching the latest tag from GitHub API..."
             
-            # Fetch all tags (up to 100 per page to be safe)
             RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/tags?per_page=100")
             
             if echo "$RESPONSE" | jq -e 'type == "array"' > /dev/null; then
-              LATEST_TAG=$(echo "$RESPONSE" | jq -r '.[].name' | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -n 1)
+              # Get the latest tag that matches the pattern vX.Y.Z (e.g., v1.9.4) or any other valid version format
+              echo "Debug: Available tags in API response:"
+              echo "$RESPONSE" | jq -r '.[].name' | head -n 5
+              
+              # New regex pattern to match tags like v1.9.4, 1.9.4, v1.9, 1.9, etc.
+              LATEST_TAG=$(echo "$RESPONSE" | jq -r '.[].name' | grep -E '^v?[0-9]+\.[0-9]+' | sort -V | tail -n 1)
               
               if [ -z "$LATEST_TAG" ]; then
-                echo "Error: No valid SemVer tags found."
+                echo "Error: No valid tags found even with relaxed pattern."
                 exit 1
               fi
               
               echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-              echo "Latest SemVer tag found: $LATEST_TAG"
+              echo "Latest tag found: $LATEST_TAG"
             else
               echo "API GitHub returned an error instead of a tag list:"
               echo "$RESPONSE" | jq .

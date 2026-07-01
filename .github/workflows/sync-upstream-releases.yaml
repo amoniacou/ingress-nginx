@@ -32,7 +32,22 @@ jobs:
           MANUAL_VERSION: ${{ github.event.inputs.version }}
         run: |
           if [ -n "$MANUAL_VERSION" ]; then
-            echo "Using manually specified version: $MANUAL_VERSION"
+            echo "Checking if manually specified version '$MANUAL_VERSION' exists..."
+            
+            # Check if the specified version exists as a release tag in the chainguard-forks/ingress-nginx repository
+            CHECK_TAG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/releases/tags/$MANUAL_VERSION")
+            
+            # If the release tag check fails, check if it exists as a git tag
+            if [ "$CHECK_TAG_STATUS" != "200" ]; then
+              CHECK_TAG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/git/ref/tags/$MANUAL_VERSION")
+            fi
+            
+            if [ "$CHECK_TAG_STATUS" != "200" ]; then
+              echo "Error: Tag '$MANUAL_VERSION' does not exist in chainguard-forks/ingress-nginx repository!"
+              exit 1
+            fi
+            
+            echo "Confirmed! Tag '$MANUAL_VERSION' exists."
             echo "tag=$MANUAL_VERSION" >> "$GITHUB_OUTPUT"
           else
             echo "No version specified, fetching the latest tag from GitHub API..."
@@ -40,15 +55,10 @@ jobs:
             RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/tags?per_page=100")
             
             if echo "$RESPONSE" | jq -e 'type == "array"' > /dev/null; then
-              # Get the latest tag that matches the pattern vX.Y.Z (e.g., v1.9.4) or any other valid version format
-              echo "Debug: Available tags in API response:"
-              echo "$RESPONSE" | jq -r '.[].name' | head -n 5
-              
-              # New regex pattern to match tags like v1.9.4, 1.9.4, v1.9, 1.9, etc.
-              LATEST_TAG=$(echo "$RESPONSE" | jq -r '.[].name' | grep -E '^v?[0-9]+\.[0-9]+' | sort -V | tail -n 1)
+              LATEST_TAG=$(echo "$RESPONSE" | jq -r '.[].name' | grep -E 'ingress-nginx-[0-9]+\.[0-9]+' | sort -V | tail -n 1)
               
               if [ -z "$LATEST_TAG" ]; then
-                echo "Error: No valid tags found even with relaxed pattern."
+                echo "Error: No valid tags found matching the ingress-nginx-X.Y.Z pattern."
                 exit 1
               fi
               

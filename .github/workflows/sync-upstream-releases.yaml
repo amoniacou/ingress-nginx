@@ -4,7 +4,12 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch: 
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Specify the version to build. Leave empty to fetch the latest release from Chainguard.'
+        required: false
+        default: '' 
 
 permissions:
   contents: write
@@ -24,19 +29,33 @@ jobs:
         id: upstream
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANUAL_VERSION: ${{ github.event.inputs.version }}
         run: |
-          # Fetch the latest tag from the Chainguard fork of ingress-nginx
-          RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" https://api.github.com/repos/chainguard-forks/ingress-nginx/tags)
-          
-          # Check if the response is a valid JSON array
-          if echo "$RESPONSE" | jq -e 'type == "array"' > /dev/null; then
-            LATEST_TAG=$(echo "$RESPONSE" | jq -r '.[0].name')
-            echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-            echo "Latest tag in Chainguard: $LATEST_TAG"
+          # Check if a manual version is provided
+          if [ -n "$MANUAL_VERSION" ]; then
+            echo "Using manually specified version: $MANUAL_VERSION"
+            echo "tag=$MANUAL_VERSION" >> "$GITHUB_OUTPUT"
           else
-            echo "API GitHub returned an error instead of a tag list:"
-            echo "$RESPONSE" | jq .
-            exit 1
+            echo "No version specified, fetching the latest tag from GitHub API..."
+            
+            # Fetch all tags (up to 100 per page to be safe)
+            RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/tags?per_page=100")
+            
+            if echo "$RESPONSE" | jq -e 'type == "array"' > /dev/null; then
+              LATEST_TAG=$(echo "$RESPONSE" | jq -r '.[].name' | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -n 1)
+              
+              if [ -z "$LATEST_TAG" ]; then
+                echo "Error: No valid SemVer tags found."
+                exit 1
+              fi
+              
+              echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+              echo "Latest SemVer tag found: $LATEST_TAG"
+            else
+              echo "API GitHub returned an error instead of a tag list:"
+              echo "$RESPONSE" | jq .
+              exit 1
+            fi
           fi
 
       # 2. CLONE CHAINGUARD REPOSITORY

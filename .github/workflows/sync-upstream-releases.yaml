@@ -2,8 +2,13 @@ name: Sync & Build Upstream Releases
 
 on:
   schedule:
-    - cron: '0 */3 * * *'  # Run every 3 hours
-  workflow_dispatch:       # Allows manual trigger from the GitHub Actions UI
+    - cron: '0 */3 * * *'  # Run every 3 hours to check for new upstream releases
+  workflow_dispatch:       # Manual trigger from the interface
+    inputs:
+      version:
+        description: 'Specify the version to build (e.g., ingress-nginx-3.15.2). Leave empty for auto-detect.'
+        required: false
+        default: '' 
 
 permissions:
   contents: write
@@ -18,19 +23,53 @@ jobs:
         with:
           egress-policy: audit
 
-      # 1. Fetch the latest stable release tag from the official kubernetes/ingress-nginx repository
+      # 1. Get version (automatically or manually specified with validation)
       - name: Get latest upstream release
         id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANUAL_VERSION: ${{ github.event.inputs.version }}
         run: |
-          LATEST_TAG=$(curl -s https://api.github.com/repos/kubernetes/ingress-nginx/releases/latest | jq -r '.tag_name')
-          echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-          echo "Latest release in upstream: $LATEST_TAG"
+          if [ -n "$MANUAL_VERSION" ]; then
+            echo "Checking if manually specified version '$MANUAL_VERSION' exists..."
+            
+            CHECK_TAG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/releases/tags/$MANUAL_VERSION")
+            if [ "$CHECK_TAG_STATUS" != "200" ]; then
+              CHECK_TAG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/git/ref/tags/$MANUAL_VERSION")
+            fi
+            
+            if [ "$CHECK_TAG_STATUS" != "200" ]; then
+              echo "Error: Tag '$MANUAL_VERSION' does not exist in chainguard-forks/ingress-nginx repository!"
+              exit 1
+            fi
+            
+            echo "tag=$MANUAL_VERSION" >> "$GITHUB_OUTPUT"
+            echo "Using manual tag: $MANUAL_VERSION"
+          else
+            echo "No version specified, fetching the latest tag from GitHub API..."
+            RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/tags?per_page=100")
+            
+            if echo "$RESPONSE" | jq -e 'type == "array"' > /dev/null; then
+              LATEST_TAG=$(echo "$RESPONSE" | jq -r '.[].name' | grep -E 'ingress-nginx-[0-9]+\.[0-9]+' | sort -V | tail -n 1)
+              
+              if [ -z "$LATEST_TAG" ]; then
+                echo "Error: No valid tags found matching the ingress-nginx-X.Y.Z pattern."
+                exit 1
+              fi
+              
+              echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+              echo "Latest tag found: $LATEST_TAG"
+            else
+              echo "API GitHub returned an error instead of a tag list:"
+              echo "$RESPONSE" | jq .
+              exit 1
+            fi
+          fi
 
-      # 2. Check if the image for this specific tag already exists in the amoniacou GHCR registry
+      # 2. Check if image already exists in GHCR (skip build if it does)
       - name: Check if image exists in our GHCR
         id: check_ghcr
         run: |
-          # Try to docker pull the target image. If it doesn't exist, the command fails (exit code 1)
           if docker pull ghcr.io/amoniacou/ingress-nginx/controller:${{ steps.upstream.outputs.tag }} 2>/dev/null; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Image for version ${{ steps.upstream.outputs.tag }} already exists in GHCR. Skipping build."
@@ -39,7 +78,7 @@ jobs:
             echo "New release detected! Image ${{ steps.upstream.outputs.tag }} is missing in GHCR. Proceeding with build."
           fi
 
-      # 3. If the image is missing, clone the upstream repository at that specific release tag
+      # 3. Clone the upstream repository at the specified tag (only if the image doesn't exist)
       - name: Checkout upstream tag
         if: steps.check_ghcr.outputs.exists == 'false'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -48,12 +87,12 @@ jobs:
           ref: ${{ steps.upstream.outputs.tag }}
           fetch-depth: 0
 
-      # 4. Set up the build environment (Go, QEMU, Buildx, and registry authentication)
+      # 4. Set up Go, QEMU, and Docker Buildx (only if the image doesn't exist)
       - name: Set up Go
         if: steps.check_ghcr.outputs.exists == 'false'
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version-file: 'GOLANG_VERSION'
+          go-version-file: 'go.mod' #Chainguard release uses go.mod to specify the Go version, so we can use that to set up the correct Go version.
 
       - name: Set up QEMU
         if: steps.check_ghcr.outputs.exists == 'false'
@@ -71,14 +110,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. Build the controller image using the project's native Makefile, then tag and push it to GHCR
+      # 5. Build and push the controller image to GHCR (only if the image doesn't exist)
       - name: Build and Push Controller Image to amoniacou GHCR
         if: steps.check_ghcr.outputs.exists == 'false'
         env:
           TAG: ${{ steps.upstream.outputs.tag }}
           REGISTRY: ghcr.io/amoniacou/ingress-nginx
           IMAGE: controller
+          FULL_IMAGE_NAME: ghcr.io/amoniacou/ingress-nginx/controller:${{ steps.upstream.outputs.tag }}
         run: |
-          echo "Starting the build for upstream official release: $TAG..."
-          make REGISTRY=$REGISTRY TAG=$TAG BASE_IMAGE=$(cat NGINX_BASE) build image push
-          echo "Successfully pushed $REGISTRY/$IMAGE:$TAG"
+          echo "Starting the production build for Chainguard release: $TAG..."
+          
+          # Fix user syntax in Dockerfile
+          if [ -f rootfs/Dockerfile ]; then
+            sed -i 's/www-data.www-data/www-data:www-data/g' rootfs/Dockerfile
+          elif [ -f Dockerfile ]; then
+            sed -i 's/www-data.www-data/www-data:www-data/g' Dockerfile
+          fi
+          
+          # Determine the base image from the NGINX_BASE file if it exists, otherwise use a fallback image
+          if [ -f NGINX_BASE ]; then
+            CLEAN_BASE_IMAGE=$(cat NGINX_BASE | tr -d '\r\n')
+          else
+            echo "NGINX_BASE not found in this tag, using fallback image."
+            CLEAN_BASE_IMAGE="registry.k8s.io/ingress-nginx/nginx:v2.2.8"
+          fi
+          
+          echo "Using BASE_IMAGE: $CLEAN_BASE_IMAGE"
+          
+          # Run the build using the original Makefile
+          make REGISTRY=$REGISTRY TAG=$TAG BASE_IMAGE=$CLEAN_BASE_IMAGE build image
+          
+          echo "Pushing image to GHCR: $FULL_IMAGE_NAME"
+          docker push "$FULL_IMAGE_NAME"
+          
+          echo "Successfully processed release $TAG!"

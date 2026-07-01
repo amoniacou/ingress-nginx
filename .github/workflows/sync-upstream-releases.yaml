@@ -46,21 +46,24 @@ jobs:
             echo "tag=$MANUAL_VERSION" >> "$GITHUB_OUTPUT"
             echo "Using manual tag: $MANUAL_VERSION"
           else
-            echo "No version specified, fetching the latest tag from GitHub API..."
-            RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/tags?per_page=100")
+            echo "No version specified, fetching the latest release from GitHub API..."
+            
+            # Get the list of releases from the GitHub API
+            RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/chainguard-forks/ingress-nginx/releases?per_page=50")
             
             if echo "$RESPONSE" | jq -e 'type == "array"' > /dev/null; then
-              LATEST_TAG=$(echo "$RESPONSE" | jq -r '.[].name' | grep -E 'ingress-nginx-[0-9]+\.[0-9]+' | sort -V | tail -n 1)
+              # Get the latest tag that matches the pattern "controller-vX.Y.Z"
+              LATEST_TAG=$(echo "$RESPONSE" | jq -r '.[].tag_name' | grep -E '^controller-v[0-9]+\.[0-9]+' | sort -V | tail -n 1)
               
               if [ -z "$LATEST_TAG" ]; then
-                echo "Error: No valid tags found matching the ingress-nginx-X.Y.Z pattern."
+                echo "Error: No valid releases found matching the controller-vX.Y.Z pattern."
                 exit 1
               fi
               
               echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
               echo "Latest tag found: $LATEST_TAG"
             else
-              echo "API GitHub returned an error instead of a tag list:"
+              echo "API GitHub returned an error instead of a release list:"
               echo "$RESPONSE" | jq .
               exit 1
             fi
